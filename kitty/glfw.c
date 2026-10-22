@@ -367,6 +367,9 @@ cocoa_out_of_sequence_render(OSWindow *window) {
             request_tick_callback();
             return;
         }
+        // Recreation creates a new context, which does not inherit per-context
+        // state such as uniform buffer binding points
+        bind_shader_globals_to_current_context();
     }
 
     bool rendered = false;
@@ -1305,13 +1308,14 @@ drag_source_callback(GLFWwindow *window UNUSED, GLFWDragEvent *ev) {
     {                                                                                    \
         call_boss(                                                                       \
             on_drag_source_finished,                                                     \
-            "OOsiOO",                                                                    \
+            "OOsiOOO",                                                                   \
             ds.was_dropped && !global_state.drop_dest.os_window_id ? Py_True : Py_False, \
             ds.was_canceled ? Py_True : Py_False,                                        \
             ds.accepted_mime_type ? ds.accepted_mime_type : "",                          \
             ds.action,                                                                   \
             ds.drag_data ? ds.drag_data : Py_None,                                       \
-            ds.needs_toplevel_on_wayland ? Py_True : Py_False);                          \
+            ds.needs_toplevel_on_wayland ? Py_True : Py_False,                           \
+            ds.was_dropped && global_state.drop_dest.os_window_id ? Py_True : Py_False); \
         free_drag_source();                                                              \
     }
     Window *w = NULL;
