@@ -16,8 +16,10 @@
 /shaders/
 /linux-package/
 /kitty.app/
+/ditty.app/
 /glad/out/
 /kitty/launcher/kitt*
+/kitty/launcher/ditty*
 /*.dSYM/
 __pycache__/
 /glfw/wayland-*-client-protocol.[ch]

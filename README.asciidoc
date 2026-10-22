@@ -1,4 +1,17 @@
-= kitty - the fast, feature-rich, cross-platform, GPU based terminal
+= ditty - the project-oriented terminal built on kitty
+
+ditty is a fork of kitty that adds a project sidebar. Projects are backed by
+kitty session files, so every tab keeps its layout, working directory and
+command, and is saved automatically. See link:docs/sidebar.rst[the project
+sidebar documentation] for details.
+
+Run it with ``./run.sh``: the script builds on first use (or when sources
+change) and opens a ditty window. Use ``./run.sh --foreground`` to keep logs in
+the terminal, or ``./run.sh --build`` to force a rebuild.
+For compatibility with the wider kitty ecosystem, the internal Python package
+is still named ``kitty``, the terminfo entry is still ``xterm-kitty`` and the
+``KITTY_*`` environment variables are unchanged. The user-facing binary, config
+directory (``~/.config/ditty``) and documentation use the ditty name.
 
 If you live in the terminal, *kitty* is made for **you**!
 

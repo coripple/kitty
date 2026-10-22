@@ -12,7 +12,7 @@ from itertools import count
 from typing import Any, NamedTuple, Set
 from weakref import ReferenceType, ref
 
-from .constants import cache_dir, config_dir, is_macos, logo_png_file, standard_icon_names, standard_sound_names, supports_window_occlusion
+from .constants import appname, cache_dir, config_dir, is_macos, logo_png_file, standard_icon_names, standard_sound_names, supports_window_occlusion
 from .fast_data_types import (
     ESC_OSC,
     StreamingBase64Decoder,
@@ -622,7 +622,7 @@ class MacOSIntegration(DesktopIntegration):
             self.current_categories = sc
 
         cocoa_send_notification(
-            nc.application_name or 'kitty',
+            nc.application_name or appname,
             str(desktop_notification_id),
             nc.title,
             body,
@@ -831,7 +831,7 @@ class FreeDesktopIntegration(DesktopIntegration):
         for i, b in enumerate(nc.buttons):
             actions[str(i + 1)] = b
         desktop_notification_id = dbus_send_notification(
-            app_name=nc.application_name or 'kitty',
+            app_name=nc.application_name or appname,
             app_icon=app_icon,
             title=nc.title,
             body=body,

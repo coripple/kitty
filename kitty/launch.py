@@ -940,6 +940,14 @@ def _launch(
             case '':
                 if kw['cwd_from'] is not None and source_window:
                     add_to_session = source_window.created_in_session_name
+                if not add_to_session and source_window is not None and not force_target_tab and get_options().sidebar_enabled:
+                    # With the project sidebar, new tabs and windows belong to
+                    # the project of the window they were launched from (for
+                    # remote control from a script in an overlay, the project
+                    # of the overlay's tab).
+                    add_to_session = source_window.created_in_session_name
+                    if not add_to_session and (source_tab := source_window.tabref()) is not None:
+                        add_to_session = source_tab.created_in_session_name
         kw['hold'] = opts.hold
         dock_owner: WindowGroup | None = None
         if opts.type in dock_launch_types:

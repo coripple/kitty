@@ -4,6 +4,7 @@
 import json
 import os
 import re
+import shlex
 import sys
 import weakref
 from collections import deque
@@ -739,6 +740,16 @@ class Window:
     creation_spec: WindowCreationSpec | None = None
     created_in_session_name: str = ''
     serialized_id: int = 0
+    # The title the window had when its session was saved. Shown until the
+    # first command runs in it, so that restored tabs keep their titles
+    # instead of immediately switching to the title the shell sets at its
+    # first prompt.
+    restored_title: str = ''
+    # The ssh kitten command line this window connects with. Kept while the
+    # connection is down (e.g. the host is unreachable from home) so that the
+    # project still reconnects next time, until the user runs some other local
+    # command in the window.
+    remembered_ssh_cmdline: tuple[str, ...] = ()
     show_title_bar: bool = False  # must be set before calling set_geometry
     is_drag_target: bool = False  # highlight this window's title bar as a drop target
     child_died: bool = False
@@ -922,7 +933,7 @@ class Window:
 
     @property
     def title(self) -> str:
-        return self.override_title or self.child_title
+        return self.override_title or self.restored_title or self.child_title
 
     def __repr__(self) -> str:
         return f'Window(title={self.title}, id={self.id})'
@@ -2024,7 +2035,7 @@ class Window:
 
             nm = get_boss().notification_manager
             cmd = nm.create_notification_cmd()
-            cmd.title = 'kitty'
+            cmd.title = appname
             s = self.last_cmd_cmdline.replace('\\\n', ' ')
             cmd.body = f'Command {s} finished with status: {exit_status}.\nClick to focus.'
             cmd.only_when = OnlyWhen(when)
@@ -2054,10 +2065,18 @@ class Window:
 
     def cmd_output_marking(self, is_start: bool | None, cmdline: str = '') -> None:
         if is_start:
+            if self.restored_title:
+                # A command is running now, let it and the shell set the title
+                self.restored_title = ''
+                if self.override_title is None:
+                    self.title_updated()
             start_time = monotonic()
             self.last_cmd_output_start_time = start_time
             cmdline = decode_cmdline(cmdline) if cmdline else ''
             self.last_cmd_cmdline = cmdline
+            if self.remembered_ssh_cmdline and cmdline and not cmdline_is_ssh_kitten(cmdline) and not self.ssh_kitten_cmdline():
+                # The user moved on to working locally in this window
+                self.remembered_ssh_cmdline = ()
             self.call_watchers(self.watchers.on_cmd_startstop, {'is_start': True, 'time': start_time, 'cmdline': cmdline, 'exit_status': 0})
         else:
             if is_start is False and self.program_status.on_process_exit_or_prompt():  # a new shell prompt
@@ -2528,11 +2547,18 @@ class Window:
             if self.creation_spec.cmd != resolved_shell(get_options()):
                 cmd = self.creation_spec.cmd
                 if is_ssh_kitten_cmdline(cmd):
-                    if self.at_prompt:
-                        if self.screen.last_reported_cwd:
-                            set_cwd_in_cmdline(path_from_osc7_url(self.screen.last_reported_cwd), cmd)
+                    # Reconnect in the last directory the remote shell reported,
+                    # also while a program is running in it
+                    if self.screen.last_reported_cwd:
+                        set_cwd_in_cmdline(path_from_osc7_url(self.screen.last_reported_cwd), cmd)
         unserialize_data: dict[str, int | list[str] | str] = {'id': self.id}
-        if not cmd and ser_opts.use_foreground_process:
+        if self.override_title is None and (displayed_title := self.restored_title or self.child_title):
+            # Restored as the initial title of the window, see restored_title
+            unserialize_data['title'] = displayed_title
+        # ditty project autosave sets preserve_ssh_kitten: reconnect ssh kitten
+        # sessions running in a shell, without re-running other programs.
+        preserve_ssh = bool(getattr(ser_opts, 'preserve_ssh_kitten', False))
+        if not cmd and (ser_opts.use_foreground_process or preserve_ssh):
 
             def make_exe_absolute(cmd: list[str], pid: int) -> None:
                 if cmd and not os.path.isabs(cmd[0]):
@@ -2544,14 +2570,21 @@ class Window:
             kssh_cmdline = self.ssh_kitten_cmdline()
             if kssh_cmdline:
                 remove_env_var_from_cmdline('KITTY_SI_RUN_COMMAND_AT_STARTUP', kssh_cmdline)
-                if self.at_prompt:
+                # Only reconnect (in the remote cwd) unless asked to also re-run
+                # the remote command that is currently running.
+                if self.at_prompt or not ser_opts.use_foreground_process:
                     if self.screen.last_reported_cwd:
                         set_cwd_in_cmdline(path_from_osc7_url(self.screen.last_reported_cwd), kssh_cmdline)
+                    self.remembered_ssh_cmdline = tuple(kssh_cmdline)
                 else:
                     if self.last_cmd_cmdline:
                         set_single_env_var_in_cmdline('KITTY_SI_RUN_COMMAND_AT_STARTUP', self.last_cmd_cmdline, kssh_cmdline)
                 unserialize_data['cmd_at_shell_startup'] = kssh_cmdline
-            elif not self.at_prompt:
+            elif preserve_ssh and self.remembered_ssh_cmdline:
+                # Not connected right now (host unreachable, connection lost):
+                # keep reconnecting next time
+                unserialize_data['cmd_at_shell_startup'] = list(self.remembered_ssh_cmdline)
+            elif ser_opts.use_foreground_process and not self.at_prompt:
                 if self.last_cmd_cmdline:
                     unserialize_data['cmd_at_shell_startup'] = self.last_cmd_cmdline
                 elif self.child.pid != (pid := self.child.pid_for_cwd) and pid is not None:
@@ -2561,6 +2594,11 @@ class Window:
                         if fcmd:
                             make_exe_absolute(fcmd, pid)
                             unserialize_data['cmd_at_shell_startup'] = fcmd
+        if preserve_ssh and cmd and is_ssh_kitten_cmdline(cmd) and 'cmd_at_shell_startup' not in unserialize_data:
+            # Run ssh from a shell, so that a failed connection leaves a local
+            # shell (and the tab) instead of closing the window
+            unserialize_data['cmd_at_shell_startup'] = list(cmd)
+            cmd = []
         ans.insert(1, unserialize_launch_flag + json.dumps(unserialize_data))
         ans.extend(cmd)
         return ans
@@ -3006,3 +3044,12 @@ def set_pointer_shape(screen: Screen, value: str, os_window_id: int = 0) -> str:
                     ans.append('0')
         ret = ','.join(ans)
     return ret
+
+
+def cmdline_is_ssh_kitten(cmdline: str) -> bool:
+    from kittens.ssh.utils import is_kitten_cmdline
+
+    try:
+        return is_kitten_cmdline(shlex.split(cmdline))
+    except ValueError:
+        return False

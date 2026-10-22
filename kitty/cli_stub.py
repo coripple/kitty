@@ -108,4 +108,4 @@ def generate_stub() -> None:
 if __name__ == '__main__':
     import subprocess
 
-    subprocess.Popen(['kitty', '+runpy', 'from kitty.cli_stub import generate_stub; generate_stub()'])
+    subprocess.Popen(['ditty', '+runpy', 'from kitty.cli_stub import generate_stub; generate_stub()'])

@@ -26,6 +26,8 @@ import (
 
 var Sep = string(os.PathSeparator)
 
+const AppName = "ditty"
+
 func Expanduser(path string) string {
 	if !strings.HasPrefix(path, "~") {
 		return path
@@ -71,14 +73,14 @@ var KittyExe = sync.OnceValue(func() string {
 	if kitty_pid := os.Getenv("KITTY_PID"); kitty_pid != "" {
 		if kp, err := strconv.ParseInt(kitty_pid, 10, 32); err == nil {
 			if p, err := process.NewProcess(int32(kp)); err == nil {
-				if exe, err := p.Exe(); err == nil && filepath.IsAbs(exe) && filepath.Base(exe) == "kitty" {
+				if exe, err := p.Exe(); err == nil && filepath.IsAbs(exe) && filepath.Base(exe) == AppName {
 					return exe
 				}
 			}
 		}
 	}
 	if exe, err := os.Executable(); err == nil {
-		ans := filepath.Join(filepath.Dir(exe), "kitty")
+		ans := filepath.Join(filepath.Dir(exe), AppName)
 		if s, err := os.Stat(ans); err == nil && !s.IsDir() {
 			return ans
 		}
@@ -113,7 +115,7 @@ func ConfigDirForName(name string) (config_dir string) {
 	}
 	for _, loc := range locations {
 		if loc != "" {
-			q := filepath.Join(loc, "kitty")
+			q := filepath.Join(loc, AppName)
 			if _, err := os.Stat(filepath.Join(q, name)); err == nil {
 				if unix.Access(q, unix.W_OK) == nil {
 					config_dir = q
@@ -126,12 +128,12 @@ func ConfigDirForName(name string) (config_dir string) {
 	if config_dir == "" {
 		config_dir = "~/.config"
 	}
-	config_dir = filepath.Join(Expanduser(config_dir), "kitty")
+	config_dir = filepath.Join(Expanduser(config_dir), AppName)
 	return
 }
 
 var ConfigDir = sync.OnceValue(func() (config_dir string) {
-	return ConfigDirForName("kitty.conf")
+	return ConfigDirForName(AppName + ".conf")
 })
 
 var CacheDir = sync.OnceValue(func() (cache_dir string) {
@@ -139,13 +141,13 @@ var CacheDir = sync.OnceValue(func() (cache_dir string) {
 	if edir := os.Getenv("KITTY_CACHE_DIRECTORY"); edir != "" {
 		candidate = Abspath(Expanduser(edir))
 	} else if runtime.GOOS == "darwin" {
-		candidate = Expanduser("~/Library/Caches/kitty")
+		candidate = Expanduser("~/Library/Caches/" + AppName)
 	} else {
 		candidate = os.Getenv("XDG_CACHE_HOME")
 		if candidate == "" {
 			candidate = "~/.cache"
 		}
-		candidate = filepath.Join(Expanduser(candidate), "kitty")
+		candidate = filepath.Join(Expanduser(candidate), AppName)
 	}
 	_ = os.MkdirAll(candidate, 0o755)
 	return candidate

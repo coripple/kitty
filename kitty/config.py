@@ -10,7 +10,7 @@ from typing import Any
 
 from .conf.utils import BadLine, parse_config_base
 from .conf.utils import load_config as _load_config
-from .constants import cache_dir, defconf
+from .constants import cache_dir, defconf, is_macos
 from .options.types import Options, defaults, option_names
 from .options.utils import KeyboardMode, KeyboardModeMap, KeyDefinition, MouseMap, MouseMapping, build_action_aliases
 from .typing_compat import TypedDict
@@ -186,6 +186,16 @@ def load_config(*paths: str, overrides: Iterable[str] | None = None, accumulate_
         overrides=overrides,
     )
     opts = Options(opts_dict)
+    if not (opts.sidebar_enabled and opts.sidebar_native and is_macos):
+        # The native macOS sidebar is not available (or was explicitly
+        # disabled), so fall back to rendering the project tree in a vertical
+        # tab bar on the left edge.
+        opts.sidebar_native = False
+        if opts.sidebar_enabled:
+            from .options.utils import tab_bar_edge as parse_tab_bar_edge
+
+            opts.tab_bar_edge = parse_tab_bar_edge('left')
+            opts.tab_bar_min_tabs = 1
 
     opts.alias_map = build_action_aliases(opts.kitten_alias, 'kitten')
     opts.alias_map.update(build_action_aliases(opts.action_alias))

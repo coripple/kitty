@@ -123,6 +123,11 @@ def shlex_parse(func: str, rest: str) -> FuncArgsType:
     return func, to_cmdline(rest)
 
 
+@func_with_args('new_project', 'open_project', 'close_project', 'delete_project', 'rename_project')
+def project_args_parse(func: str, rest: str) -> FuncArgsType:
+    return shlex_parse(func, rest)
+
+
 def parse_send_text_bytes(text: str) -> bytes:
     return defines.expand_ansi_c_escapes(text).encode('utf-8')
 

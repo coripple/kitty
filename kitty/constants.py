@@ -20,7 +20,7 @@ class Version(NamedTuple):
     patch: int
 
 
-appname: str = 'kitty'
+appname: str = 'ditty'
 kitty_face = '🐱'
 version: Version = Version(0, 49, 2)
 str_version: str = '.'.join(map(str, version))
@@ -93,12 +93,12 @@ def kitty_exe() -> str:
         for candidate in filter(None, items):
             if candidate not in seen:
                 seen.add(candidate)
-                if os.access(os.path.join(candidate, 'kitty'), os.X_OK):
+                if os.access(os.path.join(candidate, appname), os.X_OK):
                     rpath = candidate
                     break
         else:
-            raise RuntimeError('kitty binary not found')
-    return os.path.join(rpath, 'kitty')
+            raise RuntimeError(f'{appname} binary not found')
+    return os.path.join(rpath, appname)
 
 
 @run_once
@@ -127,7 +127,7 @@ def _get_config_dir() -> str:
 
 config_dir = _get_config_dir()
 del _get_config_dir
-defconf = os.path.join(config_dir, 'kitty.conf')
+defconf = os.path.join(config_dir, f'{appname}.conf')
 
 
 @run_once

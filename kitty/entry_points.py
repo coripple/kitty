@@ -5,6 +5,8 @@
 import os
 import sys
 
+from kitty.constants import appname
+
 
 def icat(args: list[str]) -> None:
     from kitty.constants import kitten_exe
@@ -20,8 +22,8 @@ def list_fonts(args: list[str]) -> None:
 
 def runpy(args: list[str]) -> None:
     if len(args) < 2:
-        raise SystemExit('Usage: kitty +runpy "some python code"')
-    sys.argv = ['kitty'] + args[2:]
+        raise SystemExit(f'Usage: {appname} +runpy "some python code"')
+    sys.argv = [appname] + args[2:]
     exec(args[1])
 
 
@@ -48,7 +50,7 @@ def complete(args: list[str]) -> None:
 
 def open_urls(args: list[str]) -> None:
     setattr(sys, 'cmdline_args_for_open', True)
-    sys.argv = ['kitty'] + args[1:]
+    sys.argv = [appname] + args[1:]
     from kitty.main import main as kitty_main
 
     kitty_main()

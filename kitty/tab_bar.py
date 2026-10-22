@@ -797,6 +797,20 @@ class TabExtent(NamedTuple):
         return self.x.start <= x <= self.x.end and self.y.start <= y <= self.y.end
 
 
+class SidebarHit(NamedTuple):
+    kind: str  # 'project', 'tab' or 'new_project'
+    project_id: str = ''
+    tab_id: int = 0
+    on_chevron: bool = False
+
+
+class SidebarRow(NamedTuple):
+    kind: str
+    project_id: str
+    tab_id: int
+    y: CellRange
+
+
 class WindowDropTarget(NamedTuple):
     tab_id: int = 0
     # None means an existing tab; zero means append, otherwise insert before this tab.
@@ -811,6 +825,7 @@ class TabBar:
         self.data_buffer_size = 0
         self.blank_rects: tuple[Border, ...] = ()
         self.tab_extents: Sequence[TabExtent] = ()
+        self.sidebar_rows: tuple[SidebarRow, ...] = ()
         self.window_drop_insert_before: int | None = None
         self.tab_drop_insert_before: int | None = None
         self.laid_out_once = False
@@ -1056,8 +1071,113 @@ class TabBar:
             return False
         with caching_titles():
             if self.is_vertical:
+                if get_options().sidebar_enabled:
+                    return self.update_sidebar(data)
                 return self.update_vertical(data)
             return self.update_horizontal(data)
+
+    @staticmethod
+    def _sidebar_fit(text: str, max_width: int) -> str:
+        text = re.sub(r'\x1b\[[0-9;:?]*[ -/]*[@-~]', '', text)
+        text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        while text and wcswidth(text) > max_width:
+            text = text[:-1]
+        return text
+
+    def update_sidebar(self, data: Sequence[TabBarData]) -> bool:
+        from .projects import SidebarGroup, get_project_manager
+
+        s = self.screen
+        self.last_laid_out_tabs = data
+        self.tab_extents = ()
+        self.sidebar_rows = ()
+        s.cursor.x = s.cursor.y = 0
+        s.erase_in_display(2, False)
+        pm = get_project_manager()
+        groups: list[SidebarGroup] = pm.sidebar_groups(data)
+        rows: list[tuple[str, SidebarGroup | None, TabBarData | None]] = []
+        for g in groups:
+            rows.append(('project', g, None))
+            if g.project is None or g.project.expanded:
+                for t in g.tabs:
+                    rows.append(('tab', g, t))
+        if get_options().sidebar_show_new_project_button:
+            rows.append(('new_project', None, None))
+        cols = s.columns
+        default_bg = int(self.draw_data.default_bg)
+        inactive_fg = int(self.draw_data.inactive_fg)
+        active_fg = int(self.draw_data.active_fg)
+        max_rows = s.lines
+        truncated = len(rows) > max_rows
+        if truncated:
+            rows = rows[: max(0, max_rows - 1)]
+
+        def draw_row(y: int, text: str, fg: int, bg: int, bold: bool = False) -> None:
+            s.cursor.x, s.cursor.y = 0, y
+            s.cursor.bg, s.cursor.fg = as_rgb(bg), as_rgb(fg)
+            s.cursor.bold, s.cursor.italic = bold, False
+            s.erase_in_line(2, False)
+            s.cursor.x, s.cursor.y = 0, y
+            s.draw(self._sidebar_fit(text, cols))
+
+        extents: list[TabExtent] = []
+        sidebar_rows: list[SidebarRow] = []
+        row = 0
+        for kind, g, t in rows:
+            if kind == 'project':
+                assert g is not None
+                p = g.project
+                if p is None:
+                    name = g.session_name or 'Unfiled'
+                    expanded = True
+                    has_active = any(x.is_active for x in g.tabs)
+                else:
+                    name = p.display_name
+                    expanded = p.expanded
+                    has_active = any(x.is_active for x in g.tabs)
+                chevron = '▾' if expanded else '▸'
+                text = f'{chevron} {name}'
+                if g.tabs:
+                    text += f'  {len(g.tabs)}'
+                header_bg = int(self.draw_data.inactive_bg)
+                header_fg = int(self.draw_data.active_fg if has_active else self.draw_data.inactive_fg)
+                draw_row(row, text, header_fg, header_bg, bold=True)
+                sidebar_rows.append(SidebarRow('project', p.id if p is not None else '', 0, CellRange(row, row)))
+            elif kind == 'tab':
+                assert t is not None
+                fg = self.draw_data.tab_fg(t)
+                bg = self.draw_data.tab_bg(t)
+                marker = '●' if t.is_active else '○'
+                text = f'  {marker} {t.title}'
+                draw_row(row, text, fg, bg, bold=t.is_active)
+                extents.append(TabExtent(t.tab_id, CellRange(0, cols - 1), CellRange(row, row)))
+                sidebar_rows.append(SidebarRow('tab', '', t.tab_id, CellRange(row, row)))
+            else:  # new_project
+                draw_row(row, '  + New project', active_fg, default_bg)
+                sidebar_rows.append(SidebarRow('new_project', '', 0, CellRange(row, row)))
+            row += 1
+        if truncated and max_rows:
+            s.cursor.x, s.cursor.y = 0, max_rows - 1
+            s.cursor.bg = as_rgb(default_bg)
+            s.cursor.fg = as_rgb(inactive_fg)
+            s.cursor.bold = False
+            s.draw('…')
+        self.tab_extents = tuple(extents)
+        self.sidebar_rows = tuple(sidebar_rows)
+        return self._update_edge_defaults(True)
+
+    def sidebar_hit_at(self, x: int, y: int) -> SidebarHit | None:
+        if not self.laid_out_once:
+            return None
+        g = self.window_geometry
+        if not (g.left <= x < g.right and g.top <= y < g.bottom):
+            return None
+        cx = (x - g.left) // self.cell_width
+        cy = (y - g.top) // self.cell_height
+        for r in self.sidebar_rows:
+            if r.y.start <= cy <= r.y.end:
+                return SidebarHit(r.kind, r.project_id, r.tab_id, on_chevron=cx <= 1)
+        return None
 
     def update_horizontal(self, data: Sequence[TabBarData]) -> bool:
         s = self.screen

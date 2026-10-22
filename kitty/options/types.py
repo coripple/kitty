@@ -461,6 +461,13 @@ option_names = (
     'shell',
     'shell_integration',
     'show_hyperlink_targets',
+    'sidebar_autosave',
+    'sidebar_autosave_delay',
+    'sidebar_enabled',
+    'sidebar_native',
+    'sidebar_native_width',
+    'sidebar_show_new_project_button',
+    'sidebar_width',
     'single_window_margin_width',
     'single_window_padding_width',
     'startup_session',
@@ -679,6 +686,13 @@ class Options:
     shell: str = '.'
     shell_integration: frozenset[str] = frozenset({'enabled'})
     show_hyperlink_targets: typing.Literal['never', 'always', 'Ctrl', 'Shift', 'Super', 'Alt'] = 'never'
+    sidebar_autosave: bool = True
+    sidebar_autosave_delay: float = 2.0
+    sidebar_enabled: bool = True
+    sidebar_native: bool = True
+    sidebar_native_width: int = 230
+    sidebar_show_new_project_button: bool = True
+    sidebar_width: int = 34
     single_window_margin_width: FloatEdges = FloatEdges(left=-1.0, top=-1.0, right=-1.0, bottom=-1.0)
     single_window_padding_width: FloatEdges = FloatEdges(left=-1.0, top=-1.0, right=-1.0, bottom=-1.0)
     startup_session: str | None = None
@@ -977,6 +991,10 @@ defaults.map = [
     KeyDefinition(trigger=SingleKey(mods=5, key=57346), definition='previous_tab'),
     # new_tab
     KeyDefinition(trigger=SingleKey(mods=256, key=116), options=KeyMapOptions(when_focus_on='', new_mode='', mode='', on_unknown='beep', on_action='keep', timeout=None, allow_fallback=(KeyFallbackType.shifted, KeyFallbackType.alternate)), definition='new_tab'),
+    # new_project
+    KeyDefinition(trigger=SingleKey(mods=257, key=110), definition='new_project'),
+    # save_projects
+    KeyDefinition(trigger=SingleKey(mods=257, key=115), definition='save_projects'),
     # close_tab
     KeyDefinition(trigger=SingleKey(mods=256, key=113), options=KeyMapOptions(when_focus_on='', new_mode='', mode='', on_unknown='beep', on_action='keep', timeout=None, allow_fallback=(KeyFallbackType.shifted, KeyFallbackType.alternate)), definition='close_tab'),
     # move_tab_forward
@@ -1077,6 +1095,7 @@ if is_macos:
     defaults.map.append(KeyDefinition(trigger=SingleKey(mods=9, key=93), definition='next_tab'))
     defaults.map.append(KeyDefinition(trigger=SingleKey(mods=9, key=91), definition='previous_tab'))
     defaults.map.append(KeyDefinition(trigger=SingleKey(mods=8, key=116), options=KeyMapOptions(when_focus_on='', new_mode='', mode='', on_unknown='beep', on_action='keep', timeout=None, allow_fallback=(KeyFallbackType.shifted, KeyFallbackType.alternate)), definition='new_tab'))
+    defaults.map.append(KeyDefinition(trigger=SingleKey(mods=12, key=115), definition='toggle_sidebar'))
     defaults.map.append(KeyDefinition(trigger=SingleKey(mods=8, key=119), options=KeyMapOptions(when_focus_on='', new_mode='', mode='', on_unknown='beep', on_action='keep', timeout=None, allow_fallback=(KeyFallbackType.shifted, KeyFallbackType.alternate)), definition='close_tab'))
     defaults.map.append(KeyDefinition(trigger=SingleKey(mods=9, key=119), options=KeyMapOptions(when_focus_on='', new_mode='', mode='', on_unknown='beep', on_action='keep', timeout=None, allow_fallback=(KeyFallbackType.shifted, KeyFallbackType.alternate)), definition='close_os_window'))
     defaults.map.append(KeyDefinition(trigger=SingleKey(mods=9, key=105), options=KeyMapOptions(when_focus_on='', new_mode='', mode='', on_unknown='beep', on_action='keep', timeout=None, allow_fallback=(KeyFallbackType.shifted, KeyFallbackType.alternate)), definition='set_tab_title'))

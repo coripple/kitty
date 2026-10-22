@@ -117,7 +117,7 @@ class AppIconCache:
         if not self.scanned:
             self.scan()
         q = appname.lower()
-        if not appname or q in ('kitty', 'kitten', 'kitten-notify'):
+        if not appname or q in ('kitty', 'ditty', 'kitten', 'kitten-notify'):
             return ''
         path = self.lcase_full_name_to_path.get(q) or self.lcase_app_name_to_path.get(q)
         if not path:

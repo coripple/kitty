@@ -12,7 +12,7 @@ requires = [
 
 [tool.ty.src]
 include = [
-  "kitty",
+  "ditty",
   "kittens",
   "glfw",
   "*.py",

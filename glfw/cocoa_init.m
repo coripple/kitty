@@ -695,6 +695,56 @@ is_active_apple_global_shortcut(NSEvent *event) {
     return kSHKUnknown;
 }
 
+// Key events are normally routed straight to the GLFW content view of the key
+// window. Let AppKit dispatch them normally instead when keyboard focus is in
+// native UI: a text field being edited (for example renaming an item in the
+// sidebar) or a window that is not a GLFW window (sheets, alerts, panels).
+static bool
+is_glfw_window(NSWindow *kw) {
+    static Class content_view_class = Nil;
+    if (content_view_class == Nil) content_view_class = NSClassFromString(@"GLFWContentView");
+    return kw != nil && content_view_class != Nil && [kw.contentView isKindOfClass:content_view_class];
+}
+
+// The text editor (field editor) that has keyboard focus inside a GLFW
+// window, if any, e.g. while renaming an item in the native sidebar.
+static NSText *
+focused_text_in_glfw_window(NSWindow *kw) {
+    if (!is_glfw_window(kw)) return nil;
+    NSResponder *fr = kw.firstResponder;
+    if (fr == nil || fr == (NSResponder *)kw.contentView || ![fr isKindOfClass:[NSText class]]) return nil;
+    return (NSText *)fr;
+}
+
+static bool
+key_event_belongs_to_native_ui(NSWindow *kw) {
+    if (kw == nil) return false;
+    return !is_glfw_window(kw) || focused_text_in_glfw_window(kw) != nil;
+}
+
+// The application menu belongs to the terminal (its Copy and Paste act on the
+// terminal and there is no Select All, Cut or Undo), so map the standard text
+// editing shortcuts to the focused text field directly.
+static SEL
+text_editing_action_for_event(NSEvent *event) {
+    NSEventModifierFlags mods = [event modifierFlags] & (NSEventModifierFlagCommand | NSEventModifierFlagShift | NSEventModifierFlagControl | NSEventModifierFlagOption);
+    NSString *chars = [[event charactersIgnoringModifiers] lowercaseString];
+    if (chars.length != 1) return NULL;
+    unichar ch = [chars characterAtIndex:0];
+    if (mods == NSEventModifierFlagCommand) {
+        switch (ch) {
+            case 'a': return @selector(selectAll:);
+            case 'c': return @selector(copy:);
+            case 'v': return @selector(paste:);
+            case 'x': return @selector(cut:);
+            case 'z': return @selector(undo:);
+        }
+    } else if (mods == (NSEventModifierFlagCommand | NSEventModifierFlagShift) && ch == 'z') {
+        return @selector(redo:);
+    }
+    return NULL;
+}
+
 static bool
 is_useful_apple_global_shortcut(int sc) {
     switch (sc) {
@@ -845,6 +895,36 @@ _glfwPlatformInit(bool *supports_window_occlusion) {
         NSEvent * (^keydown_block)(NSEvent *) = ^NSEvent *(NSEvent *event) {
           debug_input("---------------- key down -------------------\n");
           debug_input("%s\n", [[event description] UTF8String]);
+          if (key_event_belongs_to_native_ui([NSApp keyWindow])) {
+              last_keydown_shortcut_event.virtual_key_code = 0xffff;
+              NSWindow *kw = [NSApp keyWindow];
+              NSResponder *fr = kw.firstResponder;
+              if ([fr isKindOfClass:[NSText class]]) {
+                  // Any text field, also in sheets such as "Save as Template"
+                  SEL action = text_editing_action_for_event(event);
+                  if (action != NULL) {
+                      debug_input("keyDown performed text editing action %s\n", [NSStringFromSelector(action) UTF8String]);
+                      // Walks the responder chain, so undo:/redo: reach the window's undo manager
+                      if (![fr tryToPerform:action with:nil]) NSBeep();
+                      return nil;
+                  }
+              }
+              NSText *text = focused_text_in_glfw_window(kw);
+              if (text == nil) {
+                  // A sheet, alert or panel: normal AppKit dispatch
+                  debug_input("keyDown dispatched to native UI\n");
+                  return event;
+              }
+              if ([event modifierFlags] & NSEventModifierFlagCommand) {
+                  // Other Cmd shortcuts (Cmd+Q, Cmd+W, ...) keep working through the menu
+                  return event;
+              }
+              // Everything else, including Ctrl+A/E/K, arrows, Delete, Return and
+              // Escape, goes straight to the text field, bypassing the terminal.
+              debug_input("keyDown sent to focused text field\n");
+              [text keyDown:event];
+              return nil;
+          }
           if (!_glfw.ignoreOSKeyboardProcessing && !_glfw.keyboard_grabbed) {
               // first check if there is a global menu bar shortcut
               if ([[NSApp mainMenu] performKeyEquivalent:event]) {
@@ -884,6 +964,7 @@ _glfwPlatformInit(bool *supports_window_occlusion) {
         NSEvent * (^keyup_block)(NSEvent *) = ^NSEvent *(NSEvent *event) {
           debug_input("----------------- key up --------------------\n");
           debug_input("%s\n", [[event description] UTF8String]);
+          if (key_event_belongs_to_native_ui([NSApp keyWindow])) return event;
           if (last_keydown_shortcut_event.virtual_key_code != 0xffff && last_keydown_shortcut_event.virtual_key_code == [event keyCode]) {
               // ignore as the corresponding key down event triggered a menu bar or macOS shortcut
               last_keydown_shortcut_event.virtual_key_code = 0xffff;
@@ -899,6 +980,7 @@ _glfwPlatformInit(bool *supports_window_occlusion) {
         NSEvent * (^flags_changed_block)(NSEvent *) = ^NSEvent *(NSEvent *event) {
           debug_input("-------------- flags changed -----------------\n");
           debug_input("%s\n", [[event description] UTF8String]);
+          if (key_event_belongs_to_native_ui([NSApp keyWindow])) return event;
           last_keydown_shortcut_event.virtual_key_code = 0xffff;
           if (!_glfw.ignoreOSKeyboardProcessing && !_glfw.keyboard_grabbed && is_apple_fn_global_shortcut(event)) {
               debug_input("flagsChanged triggered global fn shortcut ignoring\n");

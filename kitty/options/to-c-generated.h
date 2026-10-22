@@ -4,6 +4,7 @@
 #include "to-c.h"
 
 
+
 static void
 convert_from_python_font_size(PyObject *val, Options *opts) {
     opts->font_size = PyFloat_AsDouble(val);
@@ -1188,6 +1189,45 @@ convert_from_opts_tab_bar_margin_color(PyObject *py_opts, Options *opts) {
 }
 
 static void
+convert_from_python_sidebar_native(PyObject *val, Options *opts) {
+    opts->sidebar_native = PyObject_IsTrue(val);
+}
+
+static void
+convert_from_opts_sidebar_native(PyObject *py_opts, Options *opts) {
+    PyObject *ret = PyObject_GetAttrString(py_opts, "sidebar_native");
+    if (ret == NULL) return;
+    convert_from_python_sidebar_native(ret, opts);
+    Py_DECREF(ret);
+}
+
+static void
+convert_from_python_sidebar_native_width(PyObject *val, Options *opts) {
+    opts->sidebar_native_width = PyLong_AsLong(val);
+}
+
+static void
+convert_from_opts_sidebar_native_width(PyObject *py_opts, Options *opts) {
+    PyObject *ret = PyObject_GetAttrString(py_opts, "sidebar_native_width");
+    if (ret == NULL) return;
+    convert_from_python_sidebar_native_width(ret, opts);
+    Py_DECREF(ret);
+}
+
+static void
+convert_from_python_sidebar_width(PyObject *val, Options *opts) {
+    opts->sidebar_width = PyLong_AsLong(val);
+}
+
+static void
+convert_from_opts_sidebar_width(PyObject *py_opts, Options *opts) {
+    PyObject *ret = PyObject_GetAttrString(py_opts, "sidebar_width");
+    if (ret == NULL) return;
+    convert_from_python_sidebar_width(ret, opts);
+    Py_DECREF(ret);
+}
+
+static void
 convert_from_python_foreground(PyObject *val, Options *opts) {
     opts->foreground = color_as_int(val);
 }
@@ -1760,6 +1800,12 @@ convert_opts_from_python_opts(PyObject *py_opts, Options *opts) {
     convert_from_opts_tab_bar_background(py_opts, opts);
     if (PyErr_Occurred()) return false;
     convert_from_opts_tab_bar_margin_color(py_opts, opts);
+    if (PyErr_Occurred()) return false;
+    convert_from_opts_sidebar_native(py_opts, opts);
+    if (PyErr_Occurred()) return false;
+    convert_from_opts_sidebar_native_width(py_opts, opts);
+    if (PyErr_Occurred()) return false;
+    convert_from_opts_sidebar_width(py_opts, opts);
     if (PyErr_Occurred()) return false;
     convert_from_opts_foreground(py_opts, opts);
     if (PyErr_Occurred()) return false;

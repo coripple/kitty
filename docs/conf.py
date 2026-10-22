@@ -36,7 +36,7 @@ import kitty.shaders.custom.demo as demo_module  # noqa
 # config {{{
 # -- Project information -----------------------------------------------------
 
-project = 'kitty'
+project = 'ditty'
 copyright = time.strftime('%Y, Kovid Goyal')
 author = 'Kovid Goyal'
 building_man_pages = 'man' in sys.argv

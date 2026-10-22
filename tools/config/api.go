@@ -356,7 +356,7 @@ func is_kitty_gui_cmdline(exe string, cmd ...string) bool {
 	if len(cmd) == 0 {
 		return false
 	}
-	if filepath.Base(exe) != "kitty" {
+	if filepath.Base(exe) != utils.AppName {
 		return false
 	}
 	if len(cmd) == 1 {
@@ -457,7 +457,7 @@ func ReloadConfigInKitty(in_parent_only bool) error {
 		for _, line := range utils.Splitlines(utils.UnsafeBytesToString(ps_out)) {
 			line = strings.TrimSpace(line)
 			if pid_string, argv0, found := strings.Cut(line, " "); found {
-				if pid, err := strconv.ParseInt(strings.TrimSpace(pid_string), 10, 32); err == nil && strings.Contains(argv0, "kitty") {
+				if pid, err := strconv.ParseInt(strings.TrimSpace(pid_string), 10, 32); err == nil && strings.Contains(argv0, utils.AppName) {
 					if p, err := process.NewProcess(int32(pid)); err == nil {
 						if cmdline, err := p.CmdlineSlice(); err == nil {
 							if exe, err := p.Exe(); err == nil && is_kitty_gui_cmdline(exe, cmdline...) {

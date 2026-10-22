@@ -53,6 +53,7 @@ class WindowSpec:
         self.serialized_id = serialized_id
         self.run_command_at_shell_startup = run_command_at_shell_startup
         self.restored_scrollback = b''
+        self.restored_title = ''
         if hasattr(launch_spec, 'opts'):  # LaunchSpec
             from .launch import LaunchSpec
 
@@ -144,6 +145,8 @@ class Session:
             spec.opts.window_title = t.next_title
         spec.opts.cwd = spec.opts.cwd or t.cwd
         t.windows.append(WindowSpec(spec, serialized_id=serialize_data['id'], run_command_at_shell_startup=serialize_data.get('cmd_at_shell_startup', ())))
+        if isinstance(rt := serialize_data.get('title'), str):
+            t.windows[-1].restored_title = rt
         t.next_title = None
         if t.pending_resize_spec is not None:
             t.windows[-1].resize_spec = t.pending_resize_spec
@@ -636,6 +639,19 @@ def goto_session(boss: BossType, cmdline: Sequence[str]) -> None:
         return
     if switch_to_session(boss, session_name, only_if_actual_windows_present=True):
         return
+    pm = None
+    target_project = None
+    if get_options().sidebar_enabled:
+        from .projects import get_project_manager
+
+        pm = get_project_manager()
+        adopted = pm.adopted_target(session_name)
+        if adopted is not None:
+            if switch_to_session(boss, adopted.session_name):
+                return
+            pm.open_project(adopted)
+            return
+        target_project = pm.project_for_active_tab(boss)
     try:
         session_name, created_new_os_window = create_session(boss, path)
     except Exception:
@@ -647,6 +663,8 @@ def goto_session(boss: BossType, cmdline: Sequence[str]) -> None:
         # Ensure newly created session is focused needed when it doesn't create its own OS Windows.
         if not created_new_os_window:
             switch_to_session(boss, session_name)
+        if pm is not None and target_project is not None:
+            pm.adopt_loaded_session(boss, session_name, target_project)
 
 
 save_as_session_message = """\

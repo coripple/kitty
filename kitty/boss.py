@@ -1546,6 +1546,9 @@ class Boss:
             run_update_check(get_options().update_check_interval * 60 * 60)
             self.update_check_started = True
         self.monitor_desktop_session_if_needed()
+        from .projects import get_project_manager
+
+        get_project_manager().on_startup(self)
         if opts.auto_reload_config >= 0 and not hasattr(self, 'config_reload_watcher_process') and opts.all_config_paths:
             self.config_reload_watcher_process = subprocess.Popen(
                 [kitten_exe(), '__watch_conf__', str(os.getpid()), str(int(opts.auto_reload_config * 1000))] + list(opts.all_config_paths),
@@ -2496,6 +2499,9 @@ class Boss:
                 set_application_quit_request(NO_CLOSE_REQUESTED)
                 return
             self.save_session_if_logging_out()
+            from .projects import get_project_manager
+
+            get_project_manager().save_all()
             set_application_quit_request(IMPERATIVE_CLOSE_REQUESTED)
             return
         if current_application_quit_request() == CLOSE_BEING_CONFIRMED:
@@ -3099,6 +3105,12 @@ class Boss:
 
     def destroy(self) -> None:
         self.shutting_down = True
+        try:
+            from .projects import get_project_manager
+
+            get_project_manager().save_all()
+        except Exception:
+            pass
         self.child_monitor.shutdown_monitor()
         self.set_update_check_process()
         self.update_check_process = None
@@ -3919,6 +3931,111 @@ class Boss:
     @ac('session', 'Save the current kitty state as a session file. See :ref:`save_as_session`.')
     def save_as_session(self, *cmdline: str) -> None:
         save_as_session(self, cmdline)
+
+    @ac('project', 'Create a new project, optionally specifying its directory and name')
+    def new_project(self, *args: str) -> None:
+        from .projects import get_project_manager
+
+        get_project_manager().new_project_from_args(args)
+
+    @ac('project', 'Show or hide the project sidebar (macOS native sidebar only)')
+    def toggle_sidebar(self) -> None:
+        from .projects import get_project_manager, native_sidebar_active
+
+        if not native_sidebar_active():
+            self.show_error('Sidebar not available', 'Showing and hiding the sidebar requires the native macOS sidebar')
+            return
+        get_project_manager().toggle_sidebar()
+
+    @ac('project', 'Save the state of all open projects immediately')
+    def save_projects(self) -> None:
+        from .projects import get_project_manager
+
+        get_project_manager().save_all()
+
+    @ac('project', 'Open a project by id or name, restoring its session if needed')
+    def open_project(self, *args: str) -> None:
+        from .projects import get_project_manager
+
+        if not args:
+            self.show_error('Missing project', 'Specify the id or name of the project to open')
+            return
+        pm = get_project_manager()
+        p = pm.find(args[0])
+        if p is None:
+            self.show_error('Unknown project', f'No project named {args[0]}')
+            return
+        pm.open_project(p)
+
+    @ac(
+        'project',
+        '''
+        Close a project by id or name, or the project of the active tab when none is specified.
+        The project is saved and its tabs are closed. It remains available under Recent in the sidebar.
+        ''',
+    )
+    def close_project(self, *args: str) -> None:
+        from .projects import get_project_manager
+
+        pm = get_project_manager()
+        if args:
+            if not pm.close_project(args[0]):
+                self.show_error('Unknown project', f'No project named {args[0]}')
+            return
+        p = pm.project_for_tab(self.active_tab)
+        if p is None:
+            self.show_error('No project', 'The active tab does not belong to a project')
+            return
+        pm.close_project(p.id)
+
+    @ac('project', 'Delete a project by id or name, closing its tabs by default')
+    def delete_project(self, *args: str) -> None:
+        from .projects import get_project_manager
+
+        if not args:
+            self.show_error('Missing project', 'Specify the id or name of the project to delete')
+            return
+        pm = get_project_manager()
+        close_tabs = '--keep-tabs' not in args
+        args = tuple(x for x in args if x != '--keep-tabs')
+        if not pm.delete_project(args[0], close_tabs=close_tabs):
+            self.show_error('Unknown project', f'No project named {args[0]}')
+
+    @ac('debug', 'Dump the rendered project sidebar to a text file for debugging')
+    def dump_sidebar(self) -> None:
+        import os
+
+        tm = self.active_tab_manager
+        if tm is None:
+            return
+        from .projects import native_sidebar_active, native_sidebar_rows, state_dir
+
+        os.makedirs(state_dir(), exist_ok=True)
+        path = os.path.join(state_dir(), 'sidebar-debug.txt')
+        if native_sidebar_active():
+            import json
+
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(native_sidebar_rows(tm.tab_bar_data), f, indent=2, ensure_ascii=False)
+            return
+        out: list[str] = []
+        try:
+            tm.tab_bar.screen.as_text(out.append, False, False)
+        except Exception as e:
+            self.show_error('Could not dump sidebar', str(e))
+            return
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(out))
+
+    @ac('project', 'Rename a project: rename_project <id-or-name> <new-name>')
+    def rename_project(self, *args: str) -> None:
+        from .projects import get_project_manager
+
+        if len(args) < 2:
+            self.show_error('Invalid arguments', 'Usage: rename_project <id-or-name> <new-name>')
+            return
+        if not get_project_manager().rename_project(args[0], args[1]):
+            self.show_error('Unknown project', f'No project named {args[0]}')
 
     @ac(
         'session',

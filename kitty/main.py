@@ -503,9 +503,9 @@ def safe_samefile(a: str, b: str) -> bool:
 
 def prepend_if_not_present(path: str, paths_serialized: str) -> str:
     # prepend a path only if path/kitty is not already present, even as a symlink
-    pq = os.path.join(path, 'kitty')
+    pq = os.path.join(path, appname)
     for candidate in paths_serialized.split(os.pathsep):
-        q = os.path.join(candidate, 'kitty')
+        q = os.path.join(candidate, appname)
         if safe_samefile(q, pq):
             return paths_serialized
     return path + os.pathsep + paths_serialized
@@ -519,10 +519,10 @@ def ensure_kitty_in_path() -> None:
         return
     if rpath:
         modify_path = is_macos or getattr(sys, 'frozen', False) or krd.get('from_source')
-        existing = shutil.which('kitty')
+        existing = shutil.which(appname)
         if modify_path or not existing:
             env_path = os.environ.get('PATH', '')
-            correct_kitty = os.path.join(rpath, 'kitty')
+            correct_kitty = os.path.join(rpath, appname)
             if not existing or not safe_samefile(existing, correct_kitty):
                 os.environ['PATH'] = prepend_if_not_present(rpath, env_path)
 
@@ -575,7 +575,7 @@ def setup_environment(opts: Options, cli_opts: CLIOptions) -> None:
     env = opts.env.copy()
     ensure_kitty_in_path()
     ensure_kitten_in_path()
-    kitty_path = shutil.which('kitty')
+    kitty_path = shutil.which(appname)
     if kitty_path:
         child_path = env.get('PATH')
         # if child_path is None it will be inherited from os.environ,

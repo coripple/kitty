@@ -1354,6 +1354,27 @@ class Parser:
     def show_hyperlink_targets(self, val: str, ans: dict[str, typing.Any]) -> None:
         ans['show_hyperlink_targets'] = show_hyperlink_targets(val)
 
+    def sidebar_autosave(self, val: str, ans: dict[str, typing.Any]) -> None:
+        ans['sidebar_autosave'] = to_bool(val)
+
+    def sidebar_autosave_delay(self, val: str, ans: dict[str, typing.Any]) -> None:
+        ans['sidebar_autosave_delay'] = positive_float(val)
+
+    def sidebar_enabled(self, val: str, ans: dict[str, typing.Any]) -> None:
+        ans['sidebar_enabled'] = to_bool(val)
+
+    def sidebar_native(self, val: str, ans: dict[str, typing.Any]) -> None:
+        ans['sidebar_native'] = to_bool(val)
+
+    def sidebar_native_width(self, val: str, ans: dict[str, typing.Any]) -> None:
+        ans['sidebar_native_width'] = int(val)
+
+    def sidebar_show_new_project_button(self, val: str, ans: dict[str, typing.Any]) -> None:
+        ans['sidebar_show_new_project_button'] = to_bool(val)
+
+    def sidebar_width(self, val: str, ans: dict[str, typing.Any]) -> None:
+        ans['sidebar_width'] = int(val)
+
     def single_window_margin_width(self, val: str, ans: dict[str, typing.Any]) -> None:
         ans['single_window_margin_width'] = optional_edge_width(val)
 

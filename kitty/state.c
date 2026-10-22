@@ -7,6 +7,9 @@
 
 #include "cleanup.h"
 #include "dnd.h"
+#ifdef __APPLE__
+#include "native_sidebar.h"
+#endif
 #include "options/to-c-generated.h"
 #include <math.h>
 #include <sys/mman.h>
@@ -766,7 +769,7 @@ vertical_tab_bar_cols(const OSWindow *os_window, long margin_outer, long margin_
     // Without an explicit title length use a default sidebar wide enough for
     // about twenty title cells, otherwise fit the title and whatever
     // decorations the tab bar style draws around it.
-    unsigned desired_cols = 28u;
+    unsigned desired_cols = OPT(sidebar_width) > 0 ? (unsigned)OPT(sidebar_width) : 28u;
     if (OPT(tab_title_max_length) > 0) desired_cols = MAX((unsigned)OPT(tab_title_max_length) + OPT(vertical_tab_bar.padding), OPT(vertical_tab_bar.min_cols));
     unsigned soft_max = available_cols / 3u;
     if (soft_max < 6u) soft_max = available_cols;
@@ -775,6 +778,22 @@ vertical_tab_bar_cols(const OSWindow *os_window, long margin_outer, long margin_
 
 void
 os_window_regions(const OSWindow *os_window, Region *central, Region *tab_bar) {
+#ifdef __APPLE__
+    if (OPT(sidebar_native)) {
+        central->left = 0;
+        central->right = os_window->viewport_width;
+        central->top = 0;
+        central->bottom = os_window->viewport_height;
+        long width = 0;
+        if (!global_state.native_sidebar.hidden) {
+            int width_pt = global_state.native_sidebar.width_override > 0 ? global_state.native_sidebar.width_override : OPT(sidebar_native_width);
+            width = pt_to_px_for_os_window(width_pt, os_window);
+        }
+        if (width > 0) central->left = MIN((long)central->right, width);
+        zero_at_ptr(tab_bar);
+        return;
+    }
+#endif
     if (!OPT(tab_bar_hidden) && os_window->num_tabs && !os_window->has_too_few_tabs) {
         long margin_outer = pt_to_px_for_os_window(OPT(tab_bar_margin_height.outer), os_window);
         long margin_inner = pt_to_px_for_os_window(OPT(tab_bar_margin_height.inner), os_window);
@@ -1350,6 +1369,61 @@ PYWRAP1(mark_tab_bar_dirty) {
     os_window->has_too_few_tabs = !should_be_shown;
     os_window->tab_bar_data_updated = false;
     END_WITH_OS_WINDOW
+    Py_RETURN_NONE;
+}
+
+PYWRAP1(sidebar_set_native_data) {
+    id_type os_window_id;
+    const char *payload;
+    int width;
+    PA("Ksi", &os_window_id, &payload, &width);
+#ifdef __APPLE__
+    WITH_OS_WINDOW(os_window_id)
+    native_sidebar_set_data(os_window->handle, os_window->id, payload, width);
+    END_WITH_OS_WINDOW
+#endif
+    Py_RETURN_NONE;
+}
+
+PYWRAP1(sidebar_set_native_visible) {
+    id_type os_window_id;
+    int visible;
+    PA("Kp", &os_window_id, &visible);
+#ifdef __APPLE__
+    WITH_OS_WINDOW(os_window_id)
+    native_sidebar_set_visible(os_window->handle, visible);
+    END_WITH_OS_WINDOW
+#endif
+    Py_RETURN_NONE;
+}
+
+PYWRAP1(sidebar_begin_rename_project) {
+    id_type os_window_id;
+    const char *project_id;
+    PA("Ks", &os_window_id, &project_id);
+#ifdef __APPLE__
+    WITH_OS_WINDOW(os_window_id)
+    native_sidebar_begin_rename_project(os_window->handle, os_window_id, project_id);
+    END_WITH_OS_WINDOW
+#endif
+    Py_RETURN_NONE;
+}
+
+PYWRAP1(sidebar_set_native_layout) {
+    int width;
+    int hidden;
+    PA("ip", &width, &hidden);
+    global_state.native_sidebar.width_override = MAX(0, width);
+    global_state.native_sidebar.hidden = hidden ? true : false;
+    Py_RETURN_NONE;
+}
+
+PYWRAP1(sidebar_set_callback) {
+    PyObject *callback;
+    PA("O", &callback);
+#ifdef __APPLE__
+    native_sidebar_set_callback(callback);
+#endif
     Py_RETURN_NONE;
 }
 
@@ -2169,6 +2243,11 @@ static PyMethodDef module_methods[] = {
     MW(set_os_window_chrome, METH_VARARGS),
     MW(focus_os_window, METH_VARARGS),
     MW(mark_tab_bar_dirty, METH_VARARGS),
+    MW(sidebar_set_native_data, METH_VARARGS),
+    MW(sidebar_set_native_visible, METH_VARARGS),
+    MW(sidebar_set_native_layout, METH_VARARGS),
+    MW(sidebar_begin_rename_project, METH_VARARGS),
+    MW(sidebar_set_callback, METH_VARARGS),
     MW(is_tab_bar_visible, METH_VARARGS),
     MW(run_with_activation_token, METH_O),
     MW(change_background_opacity, METH_VARARGS),

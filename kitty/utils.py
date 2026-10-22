@@ -23,6 +23,7 @@ from typing import (
 )
 
 from .constants import (
+    appname,
     cache_dir,
     clear_handled_signals,
     config_dir,
@@ -953,7 +954,7 @@ def get_all_processes() -> Iterable[int]:
 def is_kitty_gui_cmdline(*cmd: str) -> bool:
     if not cmd:
         return False
-    if os.path.basename(cmd[0]) != 'kitty':
+    if os.path.basename(cmd[0]) != appname:
         return False
     if len(cmd) == 1:
         return True

@@ -155,6 +155,9 @@ typedef struct Options {
         size_t count;
     } detect_url_regex;
     bool tab_bar_hidden;
+    int sidebar_width;
+    bool sidebar_native;
+    int sidebar_native_width;
     struct {
         unsigned padding, min_cols;
     } vertical_tab_bar;
@@ -738,6 +741,10 @@ typedef struct GlobalState {
         uint32_t texture_a_id, texture_a_fbo_id;
         uint32_t texture_b_id, texture_b_fbo_id;
     } layers_render_texture;
+    struct {
+        int width_override;  // in points, 0 means use the sidebar_native_width option
+        bool hidden;
+    } native_sidebar;
 } GlobalState;
 
 extern GlobalState global_state;

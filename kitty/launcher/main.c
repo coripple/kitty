@@ -194,6 +194,18 @@ run_embedded(RunData *run_data) {
     if (PyStatus_Exception(status)) goto fail;
     status = PyConfig_SetBytesString(&config, &config.run_filename, run_data->lib_dir);
     if (PyStatus_Exception(status)) goto fail;
+#ifdef BUNDLED_PYTHON_HOME
+    {
+        // Use the Python runtime embedded in the app bundle, if any
+        char bundled_home[PATH_MAX + 1] = {0};
+        safe_snprintf(bundled_home, sizeof(bundled_home), "%s/%s", run_data->exe_dir, BUNDLED_PYTHON_HOME);
+        struct stat st;
+        if (stat(bundled_home, &st) == 0 && S_ISDIR(st.st_mode)) {
+            status = PyConfig_SetBytesString(&config, &config.home, bundled_home);
+            if (PyStatus_Exception(status)) goto fail;
+        }
+    }
+#endif
 #ifdef SET_PYTHON_HOME
 #ifndef __APPLE__
     char pyhome[256];
@@ -423,9 +435,9 @@ handle_fast_commandline(CLISpec *cli_spec, const char *instance_group_prefix) {
     if (get_bool_cli_val(cli_spec, "help")) return;
     if (get_bool_cli_val(cli_spec, "version")) {
         if (isatty(STDOUT_FILENO)) {
-            printf("\x1b[3mkitty\x1b[23m \x1b[32m%s\x1b[39m created by \x1b[1;34mKovid Goyal\x1b[22;39m\n", KITTY_VERSION);
+            printf("\x1b[3mditty\x1b[23m \x1b[32m%s\x1b[39m built on kitty by \x1b[1;34mKovid Goyal\x1b[22;39m\n", KITTY_VERSION);
         } else {
-            printf("kitty %s created by Kovid Goyal\n", KITTY_VERSION);
+            printf("ditty %s built on kitty by Kovid Goyal\n", KITTY_VERSION);
         }
         exit(0);
     }

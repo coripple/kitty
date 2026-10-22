@@ -2559,6 +2559,88 @@ looks better.
 egr()  # }}}
 
 
+agr('sidebar', 'Project sidebar')
+
+opt(
+    'sidebar_native',
+    'yes',
+    option_type='to_bool',
+    ctype='bool',
+    long_text="""
+Use a native macOS sidebar (a source-list view with the system sidebar material)
+instead of rendering the project sidebar as terminal cells. This option is
+ignored on non-macOS platforms and when :opt:`sidebar_enabled` is off.
+""",
+)
+
+opt(
+    'sidebar_native_width',
+    '230',
+    option_type='int',
+    ctype='int',
+    long_text="""
+Width of the native macOS sidebar in points. The terminal is laid out to the
+right of this sidebar.
+""",
+)
+
+opt(
+    'sidebar_enabled',
+    'yes',
+    option_type='to_bool',
+    long_text="""
+Turn the left sidebar into a project manager. Each project is backed by a
+kitty session file. The sidebar lists projects and the tabs that belong to
+them. When enabled, the tab bar is forced to the left edge and is always
+visible, even with a single tab.
+""",
+)
+
+opt(
+    'sidebar_width',
+    '34',
+    option_type='int',
+    ctype='int',
+    long_text="""
+The preferred width of the project sidebar, in cells. The sidebar is always
+limited to a fraction of the window so that the terminal remains usable.
+""",
+)
+
+opt(
+    'sidebar_autosave',
+    'yes',
+    option_type='to_bool',
+    long_text="""
+Automatically save the state of every open project to its session file after
+tabs are created, closed, re-ordered or switched. The save is debounced so a
+burst of changes results in a single write.
+""",
+)
+
+opt(
+    'sidebar_autosave_delay',
+    '2.0',
+    option_type='positive_float',
+    long_text="""
+How long to wait after the last project change before writing the session file,
+in seconds.
+""",
+)
+
+opt(
+    'sidebar_show_new_project_button',
+    'yes',
+    option_type='to_bool',
+    long_text="""
+Show a clickable "New project" row at the bottom of the project sidebar. It
+creates a project for the working directory of the active window.
+""",
+)
+
+egr()  # }}}
+
+
 # colors {{{
 agr('colors', 'Color scheme')
 
@@ -4330,6 +4412,20 @@ map(
 map(
     'New tab',
     'new_tab --allow-fallback=shifted,ascii cmd+t new_tab',
+    only='macos',
+)
+
+map(
+    'New project',
+    'new_project kitty_mod+shift+n new_project',
+)
+map(
+    'Save all projects',
+    'save_projects kitty_mod+shift+s save_projects',
+)
+map(
+    'Toggle the project sidebar',
+    'toggle_sidebar ctrl+cmd+s toggle_sidebar',
     only='macos',
 )
 

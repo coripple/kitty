@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import tempfile
 
-from kitty.constants import kitty_exe
+from kitty.constants import is_macos, kitty_exe
 from kitty.fast_data_types import Color, test_cursor_blink_easing_function
 from kitty.options.utils import DELETE_ENV_VAR, EasingFunction, build_action_aliases, to_color
 from kitty.utils import log_error, shlex_split
@@ -398,8 +398,15 @@ def conf_parsing(self):
     self.ae(opts.url_excluded_characters, "abc'")
     opts = p('tab_bar_edge left')
     self.ae(opts.tab_bar_edge, LEFT_EDGE)
-    opts = p('tab_bar_edge right')
+    opts = p('sidebar_enabled no', 'tab_bar_edge right')
     self.ae(opts.tab_bar_edge, RIGHT_EDGE)
+    # Without the native macOS sidebar the project tree is rendered by a left
+    # edge tab bar and therefore overrides the configured edge.
+    opts = p('sidebar_native no', 'tab_bar_edge right')
+    self.ae(opts.tab_bar_edge, LEFT_EDGE)
+    # The native macOS sidebar does not use the tab bar at all.
+    opts = p('tab_bar_edge right')
+    self.ae(opts.tab_bar_edge, RIGHT_EDGE if is_macos else LEFT_EDGE)
     opts = p('tab_bar_align start')
     self.ae(opts.tab_bar_align, 'start')
     opts = p('tab_bar_align end')

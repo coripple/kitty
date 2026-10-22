@@ -1627,6 +1627,10 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
         cppflags.append(f'-DSET_PYTHON_HOME="{ph}"')
         if not is_macos:
             ldflags += ['-Wl,--disable-new-dtags', f'-Wl,-rpath,$ORIGIN/../../{ph}/lib']
+    if bundle_type == 'macos-package':
+        # A Python runtime copied into the bundle by build-app.sh is used if
+        # present, so the app does not depend on PYTHONHOME or a terminal.
+        cppflags.append('-DBUNDLED_PYTHON_HOME="../Resources/Python"')
     if bundle_type.startswith('macos-'):
         klp = '../Resources/kitty'
     elif bundle_type.startswith('linux-'):
@@ -1665,7 +1669,7 @@ def build_launcher(args: Options, launcher_dir: str = '.', bundle_type: str = 's
         args.compilation_database.add_command(
             f'Compiling {emphasis(src)} ...', cmd, partial(newer, obj, src, *dependecies_for(src, obj, headers)), key=key, keyfile=src
         )
-    dest = kitty_exe = os.path.join(launcher_dir, 'kitty')
+    dest = kitty_exe = os.path.join(launcher_dir, appname)
     link_targets.append(os.path.abspath(dest))
     desc = f'Linking {emphasis("launcher")} ...'
     cmd = env.cc + ldflags + objects + libs + pylib + ['-o', dest]
@@ -1687,6 +1691,9 @@ def copy_man_pages(ddir: str) -> None:
         for x in man_levels:
             shutil.rmtree(os.path.join(mandir, f'man{x}'))
     src = 'docs/_build/man'
+    if not os.path.exists(src) and os.environ.get('DITTY_SKIP_DOCS') == '1':
+        print('Skipping man pages, docs/_build/man is missing', file=sys.stderr)
+        return
     if not os.path.exists(src):
         raise SystemExit("""\
 The kitty man pages are missing. If you are building from git then run:
@@ -1705,6 +1712,9 @@ def copy_html_docs(ddir: str) -> None:
     with suppress(FileNotFoundError):
         shutil.rmtree(htmldir)
     src = 'docs/_build/html'
+    if not os.path.exists(src) and os.environ.get('DITTY_SKIP_DOCS') == '1':
+        print('Skipping html docs, docs/_build/html is missing', file=sys.stderr)
+        return
     if not os.path.exists(src):
         raise SystemExit("""\
 The kitty html docs are missing. If you are building from git then run:
@@ -2046,7 +2056,7 @@ def create_quick_access_bundle(kapp: str, quake_desc: str = 'Quick access to kit
         f.write(macos_info_plist(quake_desc))
     for exe in os.listdir(base_exe_dir):
         os.symlink(f'../../../MacOS/{exe}', os.path.join(bin_dir, exe))
-    base_exe = os.path.join(base_exe_dir, 'kitty')
+    base_exe = os.path.join(base_exe_dir, appname)
     if os.path.exists(base_exe):  # during freeze launcher is built after bundle is created
         shutil.copy2(base_exe, os.path.join(bin_dir, quake_name))
     for x in ('Frameworks', 'Resources'):
@@ -2054,7 +2064,7 @@ def create_quick_access_bundle(kapp: str, quake_desc: str = 'Quick access to kit
 
 
 def create_minimal_macos_bundle(args: Options, launcher_dir: str, relocate: bool = False) -> None:
-    kapp = os.path.join(launcher_dir, 'kitty.app')
+    kapp = os.path.join(launcher_dir, f'{appname}.app')
     if os.path.exists(kapp):
         shutil.rmtree(kapp)
     bin_dir = os.path.join(kapp, 'Contents/MacOS')
@@ -2064,7 +2074,7 @@ def create_minimal_macos_bundle(args: Options, launcher_dir: str, relocate: bool
     with open(os.path.join(kapp, 'Contents/Info.plist'), 'wb') as f:
         f.write(macos_info_plist())
     if relocate:
-        shutil.copy2(os.path.join(launcher_dir, 'kitty'), bin_dir)
+        shutil.copy2(os.path.join(launcher_dir, appname), bin_dir)
         shutil.copy2(os.path.join(launcher_dir, 'kitten'), bin_dir)
     else:
         build_launcher(args, bin_dir)
@@ -2465,7 +2475,7 @@ def do_build(args: Options) -> None:
     launcher_dir = 'kitty/launcher'
 
     if args.action == 'test':
-        texe = os.path.abspath(os.path.join(launcher_dir, 'kitty'))
+        texe = os.path.abspath(os.path.join(launcher_dir, appname))
         os.execl(texe, texe, '+launch', 'test.py')
     if args.action == 'clean':
         clean(for_cross_compile=args.clean_for_cross_compile)
@@ -2508,12 +2518,12 @@ def do_build(args: Options) -> None:
             build(args, native_optimizations=False)
             package(args, bundle_type='linux-freeze')
         elif args.action == 'kitty.app':
-            args.prefix = 'kitty.app'
+            args.prefix = f'{appname}.app'
             if os.path.exists(args.prefix):
                 shutil.rmtree(args.prefix)
             build(args)
             package(args, bundle_type='macos-package')
-            print('kitty.app successfully built!')
+            print(f'{appname}.app successfully built!')
         elif args.action == 'export-ci-bundles':
             cmd = [sys.executable, '../bypy', 'export', 'download.calibre-ebook.com:/srv/download/ci/kitty']
             subprocess.check_call(cmd + ['linux'])

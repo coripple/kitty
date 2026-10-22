@@ -300,7 +300,7 @@ class BaseTest(TestCase):
         set_options(None)
 
     def set_options(self, options=None):
-        final_options = {'scrollback_pager_history_size': 1024, 'click_interval': 0.5}
+        final_options = {'scrollback_pager_history_size': 1024, 'click_interval': 0.5, 'sidebar_enabled': False, 'sidebar_native': False}
         if options:
             final_options.update(options)
         options = Options(merge_result_dicts(defaults._asdict(), final_options))

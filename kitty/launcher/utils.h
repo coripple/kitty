@@ -190,9 +190,9 @@ makedirs(const char *path, int mode) {
 static bool
 is_dir_ok_for_config(char *q) {
     size_t len = strlen(q);
-    memcpy(q + len, "/kitty", sizeof("/kitty"));
-    len += sizeof("/kitty") - 1;
-    memcpy(q + len, "/kitty.conf", sizeof("/kitty.conf"));
+    memcpy(q + len, "/ditty", sizeof("/ditty"));
+    len += sizeof("/ditty") - 1;
+    memcpy(q + len, "/ditty.conf", sizeof("/ditty.conf"));
     if (access(q, F_OK) != 0) return false;
     q[len] = 0;
     return access(q, W_OK) == 0;
@@ -235,7 +235,7 @@ get_config_dir(char *output, size_t outputsz) {
     q = getenv("XDG_CONFIG_HOME");
     if (!q || !q[0]) q = "~/.config";
     expand(q, buf2, sizeof(buf2));
-    safe_snprintf(output, outputsz, "%s/kitty", buf2);
+    safe_snprintf(output, outputsz, "%s/ditty", buf2);
     if (makedirs(output, 0755)) return true;
     return false;
 #undef expand

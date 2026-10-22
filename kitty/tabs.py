@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, Concatenate, Deque, Literal, NamedTuple, 
 from .borders import Border, Borders
 from .child import Child
 from .cli_stub import CLIOptions, SaveAsSessionOptions
-from .constants import appname, is_wayland
+from .constants import appname, is_macos, is_wayland
 from .fast_data_types import (
     GLFW_MOUSE_BUTTON_LEFT,
     GLFW_MOUSE_BUTTON_MIDDLE,
@@ -383,18 +383,33 @@ class Tab:  # {{{
                 from .launch import launch
 
                 spec.opts.add_to_session = self.created_in_session_name
+                startup_command = window.run_command_at_shell_startup
+                args = spec.args
+                ssh_cmdline = ssh_kitten_cmdline_of(startup_command)
+                if not ssh_cmdline and not startup_command and self._is_project_tab() and ssh_kitten_cmdline_of(args):
+                    # In projects run ssh from a shell, so that when the host
+                    # cannot be reached (or the connection ends) a local shell
+                    # remains instead of the window, and possibly the whole
+                    # tab, closing and being dropped from the project.
+                    ssh_cmdline = ssh_kitten_cmdline_of(args)
+                    startup_command, args = ssh_cmdline, []
                 launched_window = launch(
                     boss,
                     spec.opts,
-                    spec.args,
+                    args,
                     target_tab=target_tab,
                     force_target_tab=True,
-                    startup_command_via_shell_integration=window.run_command_at_shell_startup,
+                    startup_command_via_shell_integration=startup_command,
                     restored_scrollback=window.restored_scrollback,
                 )
                 window.restored_scrollback = b''  # free the memory, it is no longer needed
                 if launched_window is not None:
                     launched_window.serialized_id = window.serialized_id
+                    if ssh_cmdline:
+                        launched_window.remembered_ssh_cmdline = tuple(ssh_cmdline)
+                    if window.restored_title and launched_window.override_title is None:
+                        launched_window.restored_title = window.restored_title
+                        launched_window.title_updated()
             if launched_window is not None:
                 if not first_window_id:
                     first_window_id = launched_window.id
@@ -524,6 +539,13 @@ class Tab:  # {{{
                 '',
             ] + launch_cmds
         return []
+
+    def _is_project_tab(self) -> bool:
+        if not self.created_in_session_name or not get_options().sidebar_enabled:
+            return False
+        from .projects import get_project_manager
+
+        return get_project_manager().by_session(self.created_in_session_name) is not None
 
     def serialize_layout_state_for_session(self) -> dict[str, Any]:
         """
@@ -896,6 +918,14 @@ class Tab:  # {{{
             window.keys_redirected_till_ready_from = w.id
         self.mark_tab_bar_dirty()
         self.relayout()
+        self._schedule_project_save()
+
+    def _schedule_project_save(self) -> None:
+        # Splits and closed windows change the project's saved layout
+        if self.created_in_session_name and get_options().sidebar_enabled:
+            from .projects import get_project_manager
+
+            get_project_manager().schedule_save()
 
     def new_window(
         self,
@@ -1057,6 +1087,7 @@ class Tab:  # {{{
             self.post_window_removal_update()
 
     def post_window_removal_update(self) -> None:
+        self._schedule_project_save()
         self.mark_tab_bar_dirty()
         self.relayout()  # prunes the closed window from the layout's internal tree
         # equalize_on_close rebalances the pruned tree, requiring a second relayout
@@ -1493,7 +1524,9 @@ class TabManager:  # {{{
         self.recent_title_bar_mouse_events = MouseEvents()
         self.wm_name = wm_name
         self.args = args
-        self.tab_bar_hidden = get_options().tab_bar_style == 'hidden'
+        from .projects import native_sidebar_active
+
+        self.tab_bar_hidden = get_options().tab_bar_style == 'hidden' or native_sidebar_active()
         self.tabs: list[Tab] = []
         self.active_tab_history: Deque[int] = deque()
         self.tab_bar = TabBar(self.os_window_id)
@@ -1544,6 +1577,11 @@ class TabManager:  # {{{
             w = tab.active_window
             for q in tab:
                 q.focus_changed(w is q and tab is active_tab)
+        self.mark_tab_bar_dirty()
+        if get_options().sidebar_enabled:
+            from .projects import get_project_manager
+
+            get_project_manager().schedule_save()
 
     @property
     def active_tab_idx(self) -> int:
@@ -1582,6 +1620,12 @@ class TabManager:  # {{{
 
     @property
     def tab_bar_should_be_visible(self) -> bool:
+        from .projects import native_sidebar_active
+
+        if native_sidebar_active():
+            return False
+        if get_options().sidebar_enabled:
+            return True
         if self.tab_being_dropped is not None or self.window_drag_over_me:
             return True  # keep tab bar visible in the dest
         count = get_options().tab_bar_min_tabs
@@ -1616,6 +1660,10 @@ class TabManager:  # {{{
         return None
 
     def mark_tab_bar_dirty(self) -> None:
+        from .projects import native_sidebar_active, update_native_sidebar
+
+        if native_sidebar_active():
+            update_native_sidebar(self.os_window_id, self.tab_bar_data)
         should_be_shown = not self.tab_bar_hidden and self.tab_bar_should_be_visible
         mark_tab_bar_dirty(self.os_window_id, should_be_shown)
         w = self.active_window or self.any_window
@@ -1626,6 +1674,16 @@ class TabManager:  # {{{
                 watcher(boss, w, data)
 
     def update_tab_bar_data(self) -> None:
+        from .projects import native_sidebar_active, update_native_sidebar
+
+        if native_sidebar_active():
+            update_native_sidebar(self.os_window_id, self.tab_bar_data)
+            return
+        if is_macos:
+            # Hide a native sidebar left over from a previous configuration.
+            from .fast_data_types import sidebar_set_native_visible
+
+            sidebar_set_native_visible(self.os_window_id, False)
         if self.tab_bar.update(self.tab_bar_data):
             for tab in self.tabs:
                 tab.relayout_borders()
@@ -1648,6 +1706,10 @@ class TabManager:  # {{{
         if tab is not None:
             tab.relayout_borders()
         self.mark_tab_bar_dirty()
+        if get_options().sidebar_enabled:
+            from .projects import get_project_manager
+
+            get_project_manager().schedule_save()
 
     @update_tab_bar_visibility
     def set_active_tab(self, tab: Tab, for_keep_focus: Tab | None = None) -> bool:
@@ -1838,6 +1900,11 @@ class TabManager:  # {{{
         location: str = 'last',
         title: str = '',
     ) -> Tab:
+        if cwd_from is None and get_options().sidebar_enabled:
+            # New tabs in the project sidebar belong to the active project and
+            # start in the active window's working directory.
+            if (aw := self.active_window) is not None:
+                cwd_from = CwdRequest(aw)
         idx = len(self.tabs)
         tabs = tuple(self.tabs_to_be_shown_in_tab_bar)
         orig_active_tab_idx = 0
@@ -1870,6 +1937,10 @@ class TabManager:  # {{{
                 idx = desired_idx
         self._set_active_tab(idx)
         self.mark_tab_bar_dirty()
+        if get_options().sidebar_enabled:
+            from .projects import get_project_manager
+
+            get_project_manager().schedule_save()
         return t
 
     @update_tab_bar_visibility
@@ -1945,6 +2016,10 @@ class TabManager:  # {{{
                 self._active_tab_idx = 0
         self.mark_tab_bar_dirty()
         removed_tab.destroy()
+        if get_options().sidebar_enabled:
+            from .projects import get_project_manager
+
+            get_project_manager().schedule_save()
 
     @property
     def tab_bar_data(self) -> Sequence[TabBarData]:
@@ -1952,6 +2027,11 @@ class TabManager:  # {{{
         wdtt = self.window_drag_target_tab_id
         # Drag previews only draw an insertion marker. Keeping the real tabs in
         # place also keeps custom renderers' tab counts and hit testing stable.
+        if get_options().sidebar_enabled:
+            # The sidebar groups tabs by project, so every tab must be visible
+            # regardless of tab_bar_filter and there is no synthetic new-tab
+            # button (the sidebar has a new-project row instead).
+            return tuple(t.data_for_tab_bar(t is at or t.id == wdtt) for t in self.tabs)
         tabs = tuple(t.data_for_tab_bar(t is at or t.id == wdtt) for t in self.tabs_to_be_shown_in_tab_bar)
         if get_window_being_dragged()[1] or get_options().tab_bar_show_new_tab_button:
             tabs += (TabBarData(title='+', is_active=wdtt == -1, os_window_id=self.os_window_id),)
@@ -2071,6 +2151,23 @@ class TabManager:  # {{{
                     self.recent_tab_bar_mouse_events.clear()
             return
 
+        if get_options().sidebar_enabled:
+            hit = self.tab_bar.sidebar_hit_at(int(x), int(y))
+            if hit is not None and hit.kind != 'tab':
+                is_left_release = button == GLFW_MOUSE_BUTTON_LEFT and action == GLFW_RELEASE
+                if is_left_release and not get_tab_being_dragged()[1]:
+                    from .projects import get_project_manager
+
+                    pm = get_project_manager()
+                    if hit.kind == 'new_project':
+                        pm.new_project_from_active_window()
+                    elif hit.kind == 'project' and hit.project_id:
+                        if hit.on_chevron:
+                            pm.toggle_expanded(hit.project_id)
+                        else:
+                            pm.activate(hit.project_id)
+                    self.mark_tab_bar_dirty()
+                return
         tab_id_at_pointer = self.tab_bar.tab_id_at(int(x), int(y))
         self.recent_tab_bar_mouse_events.add(button, modifiers, action, x, y, tab_id_at_pointer)
         drag_started = get_tab_being_dragged()[1]
@@ -2473,10 +2570,37 @@ class TabManager:  # {{{
         at = self.active_tab
         for tab in self:
             tab.apply_options(at is tab)
-        self.tab_bar_hidden = get_options().tab_bar_style == 'hidden'
+        from .projects import native_sidebar_active
+
+        self.tab_bar_hidden = get_options().tab_bar_style == 'hidden' or native_sidebar_active()
         self.tab_bar.apply_options()
         self.update_tab_bar_data()
         self.layout_tab_bar()
 
 
 # }}}
+
+
+def ssh_kitten_cmdline_of(cmd: Sequence[str] | str | None) -> list[str]:
+    '''The command line as a list if it runs the ssh kitten, with a bare
+    "kitten" resolved, as it is run from a shell that may not have it in PATH.'''
+    from kittens.ssh.utils import is_kitten_cmdline
+
+    if not cmd:
+        return []
+    if isinstance(cmd, str):
+        import shlex
+
+        try:
+            q = shlex.split(cmd)
+        except ValueError:
+            return []
+    else:
+        q = list(cmd)
+    if not is_kitten_cmdline(q):
+        return []
+    if q[0] == 'kitten':
+        from .constants import kitten_exe
+
+        q[0] = kitten_exe()
+    return q
